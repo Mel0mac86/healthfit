@@ -1,0 +1,13 @@
+{
+  "color": {
+    "bg": "#0f1513", "surface": "#18211d", "border": "#2a3631", "border-input": "#7f8f88",
+    "text": "#e8efeb", "text-muted": "#a3b1aa", "accent": "#4cc79a", "on-accent": "#06231a",
+    "danger": "#f08080", "success": "#5fd08e", "protein": "#c39bf0", "carbs": "#f0a75a", "fat": "#79b6f0"
+  },
+  "pairs": [
+    ["text", "bg"], ["text", "surface"], ["text-muted", "bg"], ["text-muted", "surface"],
+    ["on-accent", "accent"], ["accent", "surface"], ["danger", "surface"], ["success", "surface"],
+    ["protein", "surface"], ["carbs", "surface"], ["fat", "surface"],
+    ["border-input", "surface", "ui"]
+  ]
+}

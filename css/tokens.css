@@ -1,0 +1,31 @@
+/* Generato da replica/design/tokens.json e tokens-dark.json */
+:root {
+  --bg: #f6f8f7; --surface: #ffffff; --border: #dfe5e2; --border-input: #7d8b85;
+  --text: #15201b; --text-muted: #55635c; --accent: #0f7a5a; --on-accent: #ffffff;
+  --accent-soft: #e2f2ec; --danger: #b42e2e; --success: #1d7a45;
+  --protein: #8a4bd1; --carbs: #9a5208; --fat: #1f6fb8; --water: #1f6fb8;
+  --track: #e6ebe9;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-xs: 12px; --fs-sm: 14px; --fs-base: 16px; --fs-lg: 20px; --fs-xl: 28px; --fs-display: 40px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-pill: 999px;
+  --shadow: 0 1px 2px rgba(16,32,24,.06), 0 1px 3px rgba(16,32,24,.10);
+  --shadow-pop: 0 12px 32px rgba(16,32,24,.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1513; --surface: #18211d; --border: #2a3631; --border-input: #7f8f88;
+    --text: #e8efeb; --text-muted: #a3b1aa; --accent: #4cc79a; --on-accent: #06231a;
+    --accent-soft: #1d3a2f; --danger: #f08080; --success: #5fd08e;
+    --protein: #c39bf0; --carbs: #f0a75a; --fat: #79b6f0; --water: #79b6f0; --track: #26312c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1513; --surface: #18211d; --border: #2a3631; --border-input: #7f8f88;
+  --text: #e8efeb; --text-muted: #a3b1aa; --accent: #4cc79a; --on-accent: #06231a;
+  --accent-soft: #1d3a2f; --danger: #f08080; --success: #5fd08e;
+  --protein: #c39bf0; --carbs: #f0a75a; --fat: #79b6f0; --water: #79b6f0; --track: #26312c;
+  color-scheme: dark;
+}

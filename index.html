@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HealthFit</title>
+  <meta name="description" content="Calorie, macro, allenamenti, peso e passi in un'unica app. Funziona offline, i dati restano sul tuo dispositivo.">
+  <meta name="theme-color" content="#0f7a5a" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1513" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="HealthFit">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <a class="sr-only" href="#main">Vai al contenuto</a>
+  <header class="app-header">
+    <div class="inner">
+      <a class="brand" href="#/oggi" aria-label="HealthFit, vai a Oggi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/><path d="M7.5 11h2.5l1.2-2.2 1.8 4.4 1.2-2.2h2.3"/></svg>
+        HealthFit
+      </a>
+      <span class="spacer"></span>
+      <span id="streak"></span>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1"><noscript>HealthFit ha bisogno di JavaScript.</noscript></main>
+
+  <nav class="tabbar" aria-label="Sezioni">
+    <ul>
+      <li><a href="#/oggi" data-tab="oggi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6 10v9h12v-9"/></svg>Oggi</a></li>
+      <li><a href="#/diario" data-tab="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/><path d="M9 8h5"/></svg>Diario</a></li>
+      <li><a href="#/allenamenti" data-tab="allenamenti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg>Allenamenti</a></li>
+      <li><a href="#/progressi" data-tab="progressi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/></svg>Progressi</a></li>
+      <li><a href="#/profilo" data-tab="profilo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.6 4-5 7-5s5.8 1.4 7 5"/></svg>Profilo</a></li>
+    </ul>
+  </nav>
+
+  <dialog id="modal" class="modal" aria-labelledby="modal-title"></dialog>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

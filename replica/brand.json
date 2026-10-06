@@ -1,0 +1,5 @@
+{
+  "avoid": ["MyFitnessPal", "Hevy", "Google Fit", "Apple Health", "Lose It", "Yazio", "FatSecret"],
+  "domains": ["myfitnesspal.com", "hevyapp.com", "yazio.com"],
+  "colors": []
+}
