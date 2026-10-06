@@ -1,11 +1,13 @@
 // Calcoli puri: nessun accesso al DOM o allo storage, così sono testabili.
 
+// Stile di vita SENZA contare gli allenamenti: quelli si registrano a parte e si
+// aggiungono al budget, altrimenti verrebbero contati due volte.
 export const ACTIVITY = {
-  sedentario: { factor: 1.2, label: 'Sedentario (poco o nessun esercizio)' },
-  leggero: { factor: 1.375, label: 'Leggero (1-3 allenamenti/settimana)' },
-  moderato: { factor: 1.55, label: 'Moderato (3-5 allenamenti/settimana)' },
-  attivo: { factor: 1.725, label: 'Attivo (6-7 allenamenti/settimana)' },
-  molto: { factor: 1.9, label: 'Molto attivo (lavoro fisico + sport)' },
+  sedentario: { factor: 1.2, label: 'Sedentario (seduto quasi tutto il giorno)' },
+  leggero: { factor: 1.375, label: 'Poco attivo (in piedi o cammini un po\' ogni giorno)' },
+  moderato: { factor: 1.55, label: 'Attivo (molte ore in piedi o in movimento)' },
+  attivo: { factor: 1.725, label: 'Molto attivo (lavoro fisico)' },
+  molto: { factor: 1.9, label: 'Estremamente attivo (lavoro fisico pesante)' },
 };
 
 export const GOALS = {
@@ -160,4 +162,66 @@ export function streak(days, today = dateKey()) {
   let n = 0;
   while (has(k)) { n++; k = addDays(k, -1); }
   return n;
+}
+
+// Calorie extra dall'energia attiva misurata (Apple Watch / Salute).
+// Il livello di attività presume già (TDEE - BMR) kcal attive al giorno:
+// si aggiunge al budget solo quello che l'orologio misura in più.
+export function activeEnergyBonus(profile, activeKcal) {
+  const assumed = tdee(profile) - bmr(profile);
+  return Math.max(0, Math.round((Number(activeKcal) || 0) - assumed));
+}
+
+// Numeri come li scrive Comandi Rapidi in italiano o inglese: "8.500", "520,4", "1.234,5", "80.4 kg"
+export function parseLocaleNumber(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  let s = String(v ?? '').trim().replace(/[^\d.,-]/g, '');
+  if (!s || !/\d/.test(s)) return NaN;
+  const lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
+  if (lastDot >= 0 && lastComma >= 0) {
+    const dec = lastDot > lastComma ? '.' : ',';
+    s = s.split(dec === '.' ? ',' : '.').join('').replace(',', '.');
+  } else if (lastComma >= 0) {
+    s = /^-?\d{1,3}(,\d{3})+$/.test(s) && s.split(',').length > 2 ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, '');
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+const HEALTH_FIELDS = {
+  passi: { key: 'steps', min: 0, max: 200000, round: 0 },
+  attive: { key: 'activeKcal', min: 0, max: 10000, round: 0 },
+  peso: { key: 'weightKg', min: 20, max: 400, round: 1 },
+  acqua: { key: 'waterMl', min: 0, max: 10000, round: 0 },
+};
+
+// Legge i dati inviati dal Comando Rapido: un URL completo, "#/importa?..." o solo "passi=..&attive=..".
+// Restituisce { date, values, errors }. I campi mancanti o non validi vengono ignorati.
+export function parseHealthPayload(text, todayKey = dateKey()) {
+  const raw = String(text ?? '').trim();
+  const q = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : raw.replace(/^healthfit:/i, '');
+  const params = new URLSearchParams(q.replace(/\s*[;\n]\s*/g, '&'));
+  const values = {};
+  const errors = [];
+  for (const [name, f] of Object.entries(HEALTH_FIELDS)) {
+    if (!params.has(name) || params.get(name).trim() === '') continue;
+    const n = parseLocaleNumber(params.get(name));
+    if (!(n >= f.min && n <= f.max)) { errors.push(name); continue; }
+    const k = 10 ** f.round;
+    values[f.key] = Math.round(n * k) / k;
+  }
+  let date = todayKey;
+  const d = params.get('data');
+  if (d) {
+    const m = d.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/) || d.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) errors.push('data');
+    else {
+      const [y, mo, da] = m[1].length === 4 ? [m[1], m[2], m[3]] : [m[3], m[2], m[1]];
+      const key = `${y}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`;
+      if (key > todayKey || Number.isNaN(parseKey(key).getTime())) errors.push('data'); else date = key;
+    }
+  }
+  return { date, values, errors };
 }

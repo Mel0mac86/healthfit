@@ -182,6 +182,50 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await page.getByText('Full body', { exact: true }).waitFor();
   });
 
+  await flow('F07 Apple Watch: import da Salute', viewport, async (page) => {
+    await onboard(page); // sedentario? no: moderato -> attive previste 1780*0.55 = 979
+    await page.getByRole('link', { name: /Collega Apple Watch/ }).click();
+    await page.getByRole('heading', { name: 'Apple Watch e Salute' }).waitFor();
+    if (!big) await shot(page, 'S14');
+    // 1) dal link del Comando Rapido (variante Safari), con numeri in formato italiano
+    await page.goto(base + '#/importa?passi=10.250&attive=1.279,6&peso=79,8');
+    await page.getByText(/Da Salute \(oggi\)/).waitFor();
+    assert.match(page.url(), /#\/oggi$/);                        // niente reimport tornando indietro
+    assert.match(await page.locator('.eq').textContent(), /Esercizio \(Watch\)\s*\+ 302/); // 1280 - 978 previste (il peso importato, 79,8, cambia di poco il BMR)
+    await page.getByText('10.250').first().waitFor();
+    await page.getByText('79,8').first().waitFor();
+    // un cardio a mano non si somma ai dati del Watch
+    await page.getByRole('link', { name: 'Diario' }).click();
+    await page.getByRole('button', { name: 'Aggiungi attività' }).click();
+    await page.getByRole('button', { name: 'Aggiungi', exact: true }).click();
+    await page.getByText(/già incluse nei dati dell'orologio/).waitFor();
+    assert.match(await page.locator('#ex-h').locator('..').textContent(), /302\s*kcal/);
+    // 2) variante appunti: se gli appunti non servono, si incolla a mano
+    await page.getByRole('link', { name: 'Oggi', exact: true }).click();
+    await page.getByRole('button', { name: 'Importa da Salute' }).click();
+    await page.getByLabel('Dati del Comando Rapido').fill('passi=12000&attive=abc');
+    await page.getByRole('button', { name: 'Importa', exact: true }).click();
+    await page.getByText(/12\.000 passi/).waitFor();
+    // dati vuoti: messaggio, nessun crash
+    await page.goto(base + '#/importa?passi=&attive=');
+    await page.getByText(/Nessun dato da importare/).waitFor();
+  });
+
+  await flow('F02-E rest timer: i pulsanti rispondono', viewport, async (page) => {
+    await onboard(page);
+    await page.getByRole('link', { name: 'Allenamenti' }).click();
+    await page.getByRole('button', { name: 'Allenamento libero' }).click();
+    await page.getByRole('button', { name: 'Aggiungi esercizio' }).click();
+    await page.getByRole('button', { name: /Plank/ }).click();
+    await page.getByLabel('Ripetizioni serie 1').fill('1');
+    await page.getByRole('button', { name: 'Serie 1 completata' }).click();
+    const t = page.getByRole('timer');
+    const read = async () => { const [m, sec] = (await t.textContent()).match(/(\d+):(\d+)/).slice(1).map(Number); return m * 60 + sec; };
+    const before = await read();
+    for (let i = 0; i < 4; i++) { await page.getByRole('button', { name: 'Più 15 secondi' }).click(); await page.waitForTimeout(350); }
+    assert.ok(await read() >= before + 55, 'quattro +15 devono aggiungere un minuto');
+  });
+
   await flow('S13 profilo: validazione macro, export, tema', viewport, async (page) => {
     await onboard(page);
     await page.getByRole('link', { name: 'Profilo' }).click();

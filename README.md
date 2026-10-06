@@ -17,7 +17,20 @@ I documenti di lavoro sono in [`replica/`](replica/).
 - **Allenamenti**: schede pronte (Push/Pull/Gambe) e personalizzate, 35 esercizi + personalizzati,
   valori della volta precedente, timer di recupero, storico, record personali (1RM stimato)
 - **Progressi**: grafico del peso (30/90/365 giorni), BMI, calorie e passi degli ultimi 7 giorni, allenamenti per settimana
+- **Apple Watch**: un Comando Rapido di iPhone legge da Salute passi, calorie attive e peso e li manda a HealthFit
+  (guida passo passo nell'app, in Profilo → Apple Watch e Salute)
 - **Profilo**: BMR/TDEE (Mifflin-St Jeor), obiettivo con ritmo di dimagrimento, macro e obiettivi personalizzati, tema chiaro/scuro
+
+## Apple Watch e Salute
+
+Una web app non può leggere Salute direttamente, quindi fa da ponte un Comando Rapido che apre
+`…/#/importa?passi=8500&attive=520&peso=80,4` (oppure copia lo stesso testo negli appunti, per l'app
+installata sulla schermata Home, che su iPhone ha dati separati da Safari). Accetta numeri in formato
+italiano e inglese e una `data=AAAA-MM-GG` facoltativa. I valori sostituiscono quelli del giorno.
+
+Calorie: il livello di attività del profilo (senza allenamenti) prevede già una quota di energia attiva;
+al budget si aggiunge solo quella misurata in più dal Watch, e nei giorni con i dati dell'orologio le
+attività inserite a mano non si sommano di nuovo.
 
 ## Avvio
 

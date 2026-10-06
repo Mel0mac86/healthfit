@@ -35,6 +35,7 @@ all'obiettivo.
 | S10 | Modifica scheda | #/scheda/:id | crea/modifica routine | lista esercizi | vuota |
 | S11 | Dettaglio allenamento | modale da S07 | rivedi sessione | tabella | |
 | S12 | Progressi | #/progressi | peso, calorie, passi, allenamenti | grafici SVG | senza dati |
+| S14 | Apple Watch e Salute | #/salute | guida al Comando Rapido, import | lista passi, textarea | mai collegato, collegato |
 | S13 | Profilo | #/profilo | obiettivi e dati | form, export/import | |
 
 ## Flows

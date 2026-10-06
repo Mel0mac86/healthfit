@@ -21,7 +21,7 @@ const dlg = $('#modal');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n, d = 0) => Number(n || 0).toLocaleString('it-IT', { maximumFractionDigits: d, minimumFractionDigits: 0 });
-const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
 const today = () => C.dateKey();
 
@@ -45,11 +45,15 @@ function persist() {
 function commit() { persist(); render(); }
 
 let toastTimer;
+// regione live presente fin dall'avvio, così gli screen reader annunciano ogni messaggio
+const live = document.createElement('div');
+live.setAttribute('role', 'status');
+live.setAttribute('aria-live', 'polite');
+document.body.append(live);
 function toast(msg, undo) {
-  document.querySelectorAll('.toast').forEach((t) => t.remove());
+  live.querySelectorAll('.toast').forEach((t) => t.remove());
   const el = document.createElement('div');
   el.className = 'toast row';
-  el.setAttribute('role', 'status');
   el.innerHTML = `<span>${esc(msg)}</span>`;
   if (undo) {
     const b = document.createElement('button');
@@ -59,7 +63,7 @@ function toast(msg, undo) {
     b.onclick = () => { undo(); el.remove(); };
     el.append(b);
   }
-  document.body.append(el);
+  live.append(el);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.remove(), undo ? 5000 : 2500);
 }
@@ -92,6 +96,7 @@ const ICONS = {
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   upload: '<path d="M12 16V5M7 9l5-5 5 5M5 20h14"/>',
   play: '<path d="M8 5v14l11-7z"/>',
+  watch: '<rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3M12 9.5V12l1.5 1.5"/>',
 };
 const icon = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 
@@ -109,10 +114,14 @@ const currentWeight = () => {
   return w ? w.kg : state.profile?.weightKg || 70;
 };
 function workoutsOn(key) { return state.workouts.filter((w) => w.date === key); }
+const workoutKcal = (w) => w.kcal ?? C.workoutKcal(w, currentWeight());
+// Con i dati di Salute (Apple Watch) l'esercizio è già misurato: si usa solo il bonus di energia attiva,
+// altrimenti cardio + allenamenti registrati a mano.
 function exerciseKcal(key) {
   const d = S.peekDay(state, key);
+  if (d?.health) return C.activeEnergyBonus(state.profile || {}, d.health.activeKcal);
   const cardio = d ? d.cardio.reduce((s, c) => s + (c.kcal || 0), 0) : 0;
-  const lifting = workoutsOn(key).reduce((s, w) => s + C.workoutKcal(w, currentWeight()), 0);
+  const lifting = workoutsOn(key).reduce((s, w) => s + workoutKcal(w), 0);
   return cardio + lifting;
 }
 function totalsFor(key) {
@@ -120,7 +129,7 @@ function totalsFor(key) {
   const food = d ? C.sumEntries(allEntries(d)) : { kcal: 0, p: 0, c: 0, f: 0 };
   const ex = exerciseKcal(key);
   const t = targets();
-  return { food, ex, goal: t.kcal, remaining: t.kcal - food.kcal + ex, t };
+  return { food, ex, goal: t.kcal, remaining: t.kcal - food.kcal + ex, t, watch: !!d?.health };
 }
 const findFood = (id) => state.foods.find((f) => f.id === id) || FOODS.find((f) => f.id === id);
 const allExercises = () => [...state.customExercises, ...EXERCISES];
@@ -134,6 +143,33 @@ function previousSets(name, excludeId) {
   }
   return [];
 }
+
+// Applica i dati arrivati dal Comando Rapido. I valori sostituiscono quelli del giorno
+// (non si sommano), così importare due volte non raddoppia nulla.
+function applyHealth({ date, values }) {
+  const d = S.day(state, date);
+  const done = [];
+  if (values.steps != null) { d.steps = values.steps; done.push(`${fmt(values.steps)} passi`); }
+  if (values.activeKcal != null) { d.health = { activeKcal: values.activeKcal, at: Date.now() }; done.push(`${fmt(values.activeKcal)} kcal attive`); }
+  if (values.waterMl != null) { d.waterMl = values.waterMl; done.push(`${fmt(values.waterMl / 1000, 2)} L d'acqua`); }
+  if (values.weightKg != null) { upsertWeight(date, values.weightKg); done.push(`${fmt(values.weightKg, 1)} kg`); }
+  if (done.length) state.lastHealthSync = Date.now();
+  return done;
+}
+
+function importHealth(text) {
+  const res = C.parseHealthPayload(text, today());
+  const done = applyHealth(res);
+  if (!done.length) {
+    toast(res.errors.length ? `Dati non validi: ${res.errors.join(', ')}` : 'Nessun dato da importare: controlla il Comando Rapido');
+    return false;
+  }
+  persist();
+  toast(`Da Salute (${dayLabel(res.date).toLowerCase()}): ${done.join(' · ')}`);
+  return true;
+}
+
+function healthBaseUrl() { return `${location.origin}${location.pathname}#/importa?`; }
 
 function upsertWeight(date, kg) {
   const i = state.weights.findIndex((w) => w.date === date);
@@ -156,7 +192,7 @@ function calorieEquation(tt) {
   return `<dl class="eq">
     <dt>Obiettivo</dt><dd>${fmt(tt.goal)}</dd>
     <dt>Cibo</dt><dd>− ${fmt(tt.food.kcal)}</dd>
-    <dt>Esercizio</dt><dd>+ ${fmt(tt.ex)}</dd>
+    <dt>${tt.watch ? 'Esercizio (Watch)' : 'Esercizio'}</dt><dd>+ ${fmt(tt.ex)}</dd>
     <dt class="total">Rimanenti</dt><dd class="total" style="color:${tt.remaining < 0 ? 'var(--danger)' : 'var(--text)'}">${fmt(tt.remaining)}</dd>
   </dl>`;
 }
@@ -170,9 +206,9 @@ function waterCard(key) {
     <div class="card-head"><h3 id="water-h">${icon('drop')} Acqua</h3><span class="num"><strong>${fmt(d.waterMl / 1000, 2)}</strong> / ${fmt(goal / 1000, 1)} L</span></div>
     <div class="water-glasses" aria-hidden="true">${Array.from({ length: glasses }, (_, i) => `<span class="glass${i < full ? ' full' : ''}"></span>`).join('')}</div>
     <div class="row wrap">
-      <button class="btn sm" data-action="water" data-ml="-250" data-date="${key}" aria-label="Togli 250 ml" ${d.waterMl <= 0 ? 'disabled' : ''}>${icon('minus')}</button>
-      <button class="btn sm primary" data-action="water" data-ml="250" data-date="${key}">${icon('plus')} 250 ml</button>
-      <button class="btn sm" data-action="water" data-ml="500" data-date="${key}">${icon('plus')} 500 ml</button>
+      <button class="btn sm" data-action="water" data-ml="-250" data-date="${esc(key)}" aria-label="Togli 250 ml" ${d.waterMl <= 0 ? 'disabled' : ''}>${icon('minus')}</button>
+      <button class="btn sm primary" data-action="water" data-ml="250" data-date="${esc(key)}">${icon('plus')} 250 ml</button>
+      <button class="btn sm" data-action="water" data-ml="500" data-date="${esc(key)}">${icon('plus')} 500 ml</button>
     </div>
   </section>`;
 }
@@ -184,12 +220,23 @@ function stepsCard(key) {
   return `<section class="card" aria-labelledby="steps-h">
     <div class="card-head"><h3 id="steps-h">${icon('steps')} Passi</h3><span class="num"><strong>${fmt(d.steps)}</strong> / ${fmt(goal)}</span></div>
     <div class="bar" role="progressbar" aria-label="Passi" aria-valuemin="0" aria-valuemax="${goal}" aria-valuenow="${d.steps}"><span style="width:${pct}%"></span></div>
-    <form class="row" data-form="steps" data-date="${key}">
+    <form class="row" data-form="steps" data-date="${esc(key)}">
       <label class="sr-only" for="steps-in-${key}">Passi di ${dayLabel(key)}</label>
       <input id="steps-in-${key}" name="steps" type="number" inputmode="numeric" min="0" max="200000" placeholder="Passi totali" value="${d.steps || ''}">
       <button class="btn">Salva</button>
     </form>
   </section>`;
+}
+
+function healthStrip(key) {
+  const d = S.peekDay(state, key);
+  if (!state.lastHealthSync) {
+    return `<a class="card row" href="#/salute" style="text-decoration:none;color:inherit">${icon('watch')}<span class="grow"><strong>Collega Apple Watch</strong><br><span class="muted small">Passi, calorie attive e peso dall'app Salute</span></span>${icon('right')}</a>`;
+  }
+  return `<section class="card row wrap" aria-label="Apple Watch">${icon('watch')}
+    <span class="grow small">${d?.health ? `<strong>${fmt(d.health.activeKcal)} kcal attive</strong> dal Watch` : '<strong>Nessun dato di oggi</strong> dal Watch'}<br>
+    <span class="muted xs">Ultimo import: ${new Date(state.lastHealthSync).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span>
+    <button class="btn sm" data-action="health-paste">${icon('download')} Importa da Salute</button></section>`;
 }
 
 // ---------- viste ----------
@@ -215,7 +262,7 @@ function viewOggi() {
       <p class="muted small">${C.parseKey(key).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div></div>
 
     <section class="card" aria-labelledby="cal-h">
-      <div class="card-head"><h2 id="cal-h">Calorie</h2><a class="btn sm" href="#/diario" data-action="goto-diary" data-date="${key}">${icon('plus')} Registra</a></div>
+      <div class="card-head"><h2 id="cal-h">Calorie</h2><a class="btn sm" href="#/diario" data-action="goto-diary" data-date="${esc(key)}">${icon('plus')} Registra</a></div>
       <div class="ring-wrap">
         <div class="ring">${ring(tt.food.kcal, tt.goal + tt.ex, { over })}
           <div class="center"><strong>${fmt(Math.abs(tt.remaining))}</strong><span class="muted small">${over ? 'in eccesso' : 'rimanenti'}</span></div>
@@ -232,6 +279,7 @@ function viewOggi() {
     </section>
 
     <div class="grid2">${waterCard(key)}${stepsCard(key)}</div>
+    ${healthStrip(key)}
 
     <div class="grid2">
       <section class="card" aria-labelledby="wt-h">
@@ -268,7 +316,7 @@ function viewDiario() {
       ${list.length ? `<ul class="list">${list.map((e) => `<li>
           <div class="main"><div class="ellipsis">${esc(e.name)}</div><div class="muted xs num">${fmt(e.grams)} g · P ${fmt(e.p, 1)} · C ${fmt(e.c, 1)} · G ${fmt(e.f, 1)}</div></div>
           <span class="kcal">${fmt(e.kcal)}</span>
-          <button class="btn ghost icon-btn sm" data-action="del-entry" data-meal="${m.id}" data-id="${e.id}" aria-label="Rimuovi ${esc(e.name)}">${icon('trash')}</button>
+          <button class="btn ghost icon-btn sm" data-action="del-entry" data-meal="${m.id}" data-id="${esc(e.id)}" aria-label="Rimuovi ${esc(e.name)}">${icon('trash')}</button>
         </li>`).join('')}</ul>
         <p class="muted xs num">P ${fmt(tot.p)} g · C ${fmt(tot.c)} g · G ${fmt(tot.f)} g</p>` : ''}
       <div class="row wrap">
@@ -281,12 +329,13 @@ function viewDiario() {
   const ws = workoutsOn(key);
   const exItems = [
     ...d.cardio.map((c) => `<li><div class="main"><div>${esc(c.name)}</div><div class="muted xs">${fmt(c.min)} min</div></div><span class="kcal">${fmt(c.kcal)}</span>
-      <button class="btn ghost icon-btn sm" data-action="del-cardio" data-id="${c.id}" aria-label="Rimuovi ${esc(c.name)}">${icon('trash')}</button></li>`),
-    ...ws.map((w) => `<li><div class="main"><div>${esc(w.name)}</div><div class="muted xs">${duration(w.durationSec)} · stima</div></div><span class="kcal">${fmt(C.workoutKcal(w, currentWeight()))}</span>
-      <button class="btn ghost icon-btn sm" data-action="open-workout" data-id="${w.id}" aria-label="Dettagli ${esc(w.name)}">${icon('right')}</button></li>`),
+      <button class="btn ghost icon-btn sm" data-action="del-cardio" data-id="${esc(c.id)}" aria-label="Rimuovi ${esc(c.name)}">${icon('trash')}</button></li>`),
+    ...ws.map((w) => `<li><div class="main"><div>${esc(w.name)}</div><div class="muted xs">${duration(w.durationSec)} · stima</div></div><span class="kcal">${fmt(workoutKcal(w))}</span>
+      <button class="btn ghost icon-btn sm" data-action="open-workout" data-id="${esc(w.id)}" aria-label="Dettagli ${esc(w.name)}">${icon('right')}</button></li>`),
   ];
 
-  return `<div class="datenav" role="group" aria-label="Giorno">
+  return `<h1 class="sr-only">Diario di ${dayLabel(key).toLowerCase()}</h1>
+    <div class="datenav" role="group" aria-label="Giorno">
       <button class="btn ghost icon-btn" data-action="day" data-delta="-1" aria-label="Giorno precedente">${icon('left')}</button>
       <strong>${dayLabel(key)}</strong>
       ${key !== today() ? `<button class="btn ghost sm" data-action="day" data-delta="0">Oggi</button>` : ''}
@@ -298,7 +347,10 @@ function viewDiario() {
     ${meals}
     <section class="card" aria-labelledby="ex-h">
       <div class="card-head"><h2 id="ex-h">${icon('flame')} Esercizio</h2><span class="num"><strong>${fmt(tt.ex)}</strong> kcal</span></div>
-      ${exItems.length ? `<ul class="list">${exItems.join('')}</ul>` : '<p class="muted small">Nessuna attività. Le kcal bruciate si aggiungono al tuo budget.</p>'}
+      ${d.health ? `<p class="small">${icon('watch')} <strong>${fmt(d.health.activeKcal)} kcal attive</strong> dal Watch.
+        <span class="muted">Il tuo livello di attività ne prevede già ${fmt(C.tdee(state.profile) - C.bmr(state.profile))}: si aggiungono al budget le ${fmt(tt.ex)} in più.
+        ${exItems.length ? 'Le attività qui sotto sono già incluse nei dati dell\'orologio.' : ''}</span></p>` : ''}
+      ${exItems.length ? `<ul class="list">${exItems.join('')}</ul>` : d.health ? '' : '<p class="muted small">Nessuna attività. Le kcal bruciate si aggiungono al tuo budget.</p>'}
       <div class="row"><button class="btn sm primary" data-action="open-cardio">${icon('plus')} Aggiungi attività</button></div>
     </section>
     ${waterCard(key)}`;
@@ -317,8 +369,8 @@ function viewAllenamenti() {
       <div class="card-head"><h3>Le tue schede</h3><a class="btn sm" href="#/scheda/nuova">${icon('plus')} Nuova</a></div>
       ${state.routines.length ? `<ul class="list">${state.routines.map((r) => `<li>
         <div class="main"><div><strong>${esc(r.name)}</strong></div><div class="muted xs ellipsis">${r.exercises.map((e) => esc(e.name)).join(' · ') || 'Nessun esercizio'}</div></div>
-        <a class="btn ghost icon-btn sm" href="#/scheda/${r.id}" aria-label="Modifica ${esc(r.name)}">${icon('edit')}</a>
-        <button class="btn sm primary" data-action="start-workout" data-routine="${r.id}">Inizia</button>
+        <a class="btn ghost icon-btn sm" href="#/scheda/${encodeURIComponent(r.id)}" aria-label="Modifica ${esc(r.name)}">${icon('edit')}</a>
+        <button class="btn sm primary" data-action="start-workout" data-routine="${esc(r.id)}">Inizia</button>
       </li>`).join('')}</ul>` : '<p class="empty">Nessuna scheda. Creane una per partire più in fretta.</p>'}
     </section>
     <section class="card" aria-labelledby="pr-h">
@@ -329,7 +381,7 @@ function viewAllenamenti() {
     <section class="card" aria-labelledby="hist-h">
       <h2 id="hist-h">Storico</h2>
       ${hist.length ? `<ul class="list">${hist.map((w) => `<li>
-        <button class="pick" data-action="open-workout" data-id="${w.id}">
+        <button class="pick" data-action="open-workout" data-id="${esc(w.id)}">
           <div class="main"><div><strong>${esc(w.name)}</strong></div><div class="muted xs num">${dayLabel(w.date)} · ${duration(w.durationSec)} · ${C.doneSets(w)} serie · ${fmt(C.workoutVolume(w))} kg</div></div>
           ${icon('right')}
         </button></li>`).join('')}</ul>` : '<p class="empty">Ancora nessun allenamento.</p>'}
@@ -388,7 +440,7 @@ function viewScheda(id) {
     <section class="card">
       <label class="field">Nome<input name="name" type="text" maxlength="50" required value="${esc(d.name)}" data-input="draft-name" placeholder="Es. Full body A"></label>
     </section>
-    ${d.exercises.map((e, i) => `<section class="card"><div class="card-head"><h3 class="ellipsis">${esc(e.name)}</h3>
+    ${d.exercises.map((e, i) => `<section class="card"><div class="card-head"><h2 class="ellipsis" style="font-size:var(--fs-base)">${esc(e.name)}</h2>
         <div class="row">
           <button type="button" class="btn ghost icon-btn sm" data-action="draft-move" data-i="${i}" data-dir="-1" aria-label="Sposta su" ${i === 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button type="button" class="btn ghost icon-btn sm" data-action="draft-move" data-i="${i}" data-dir="1" aria-label="Sposta giù" ${i === d.exercises.length - 1 ? 'disabled' : ''}>${icon('down')}</button>
@@ -441,7 +493,7 @@ function viewProgressi() {
         <button class="btn primary" style="align-self:end">Aggiungi</button>
       </form>
       ${state.weights.length ? `<ul class="list">${state.weights.slice(-5).reverse().map((w) => `<li><div class="main">${dayLabel(w.date)}</div><span class="kcal">${fmt(w.kg, 1)} kg</span>
-        <button class="btn ghost icon-btn sm" data-action="del-weight" data-date="${w.date}" aria-label="Elimina peso del ${shortDate(w.date)}">${icon('trash')}</button></li>`).join('')}</ul>` : ''}
+        <button class="btn ghost icon-btn sm" data-action="del-weight" data-date="${esc(w.date)}" aria-label="Elimina peso del ${shortDate(w.date)}">${icon('trash')}</button></li>`).join('')}</ul>` : ''}
     </section>
     <div class="grid2">
       <section class="card"><h3>BMI</h3><p class="stat num">${bmiV ?? '—'} <small>${C.bmiLabel(bmiV)}</small></p>
@@ -465,7 +517,7 @@ function profileForm(first = false) {
       <label class="field">Età<input name="age" type="number" inputmode="numeric" min="14" max="100" required value="${p.age || ''}"></label>
       <label class="field">Altezza (cm)<input name="heightCm" type="number" inputmode="numeric" min="120" max="230" required value="${p.heightCm || ''}"></label>
       <label class="field">Peso (kg)<input name="weightKg" type="number" inputmode="decimal" step="0.1" min="30" max="300" required value="${p.weightKg || ''}"></label>
-      <label class="field">Attività<select name="activity">${opt(C.ACTIVITY, p.activity)}</select></label>
+      <label class="field">Attività quotidiana<select name="activity" aria-describedby="act-hint">${opt(C.ACTIVITY, p.activity)}</select><span class="hint" id="act-hint">Senza contare gli allenamenti: li registri a parte.</span></label>
       <label class="field">Obiettivo<select name="goal">${opt(C.GOALS, p.goal)}</select></label>
       <label class="field">Ritmo (kg/settimana)<select name="rate">${[0.25, 0.5, 0.75, 1].map((r) => `<option value="${r}" ${Number(p.rate) === r ? 'selected' : ''}>${fmt(r, 2)}</option>`).join('')}</select></label>
     </div>
@@ -481,6 +533,53 @@ function profileForm(first = false) {
     <p class="error-text" id="profile-error" role="alert"></p>
     <button class="btn primary">${first ? 'Calcola e inizia' : 'Salva profilo'}</button>
   </form>`;
+}
+
+function viewSalute() {
+  const base = healthBaseUrl();
+  const step = (n, html) => `<li><span class="badge" aria-hidden="true">${n}</span><div>${html}</div></li>`;
+  return `<div class="page-title"><h1>Apple Watch e Salute</h1></div>
+    <section class="card">
+      <p>HealthFit non può leggere direttamente l'app Salute (è una web app). Un <strong>Comando Rapido</strong> di iPhone fa da ponte:
+      legge passi, calorie attive e peso registrati dall'Apple Watch e li manda qui.</p>
+      ${state.lastHealthSync ? `<p class="small muted">Ultimo import: ${new Date(state.lastHealthSync).toLocaleString('it-IT')}</p>` : ''}
+      <div class="row wrap">
+        <button class="btn primary" data-action="health-paste">${icon('download')} Importa da Salute</button>
+        <button class="btn" data-action="health-manual">Incolla i dati a mano</button>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="sc-h">
+      <h2 id="sc-h">Crea il Comando Rapido (una volta sola)</h2>
+      <p class="small muted">Apri l'app <strong>Comandi</strong> su iPhone, tocca <strong>+</strong> e chiamalo “HealthFit”. Aggiungi queste azioni cercandole per nome:</p>
+      <ol class="guide">
+        ${step(1, '<strong>Trova campioni di Salute</strong>: Tipo <em>Passi</em>, Data di inizio <em>è oggi</em>, Raggruppa per <em>Giorno</em>.')}
+        ${step(2, '<strong>Calcola statistiche</strong>: <em>Somma</em> dei campioni. Rinomina il risultato in <em>Passi</em>.')}
+        ${step(3, 'Di nuovo <strong>Trova campioni di Salute</strong>: Tipo <em>Energia attiva</em>, Data di inizio <em>è oggi</em>, Raggruppa per <em>Giorno</em>.')}
+        ${step(4, '<strong>Calcola statistiche</strong>: <em>Somma</em>. Rinomina in <em>Attive</em>.')}
+        ${step(5, '(Facoltativo) <strong>Trova campioni di Salute</strong>: Tipo <em>Peso</em>, Data di inizio <em>è oggi</em>, Ordina per <em>Data di inizio</em> dalla più recente, Limite <em>1</em>. Rinomina in <em>Peso</em>.')}
+        ${step(6, `<strong>Testo</strong>: incolla l'indirizzo qui sotto e, dopo ogni <code>=</code>, inserisci la variabile corrispondente.
+          <code class="url">${esc(base)}passi=<b>Passi</b>&amp;attive=<b>Attive</b>&amp;peso=<b>Peso</b></code>
+          <button class="btn sm" data-action="copy-base">${icon('copy')} Copia l'indirizzo</button>`)}
+        ${step(7, `Ultima azione, a scelta:
+          <ul class="small"><li><strong>Apri URL</strong> (Testo): se usi HealthFit <em>da Safari</em>, i dati entrano da soli.</li>
+          <li><strong>Copia negli appunti</strong> (Testo): se hai HealthFit <em>sulla schermata Home</em>. Poi apri l'app e tocca “Importa da Salute”.</li></ul>
+          <p class="muted xs">Su iPhone l'app installata sulla schermata Home e Safari hanno dati separati: per questo servono due varianti.</p>`)}
+      </ol>
+      <p class="small muted">Controlla la prima volta che passi e calorie coincidano con quelli dell'app Salute.</p>
+    </section>
+    <section class="card" aria-labelledby="auto-h">
+      <h2 id="auto-h">Automatico ogni sera</h2>
+      <p class="small">In <strong>Comandi → Automazione → Nuova automazione → Ora del giorno</strong> scegli per esempio le 21:30,
+      seleziona <strong>Esegui immediatamente</strong> e il comando “HealthFit”. Puoi anche avviarlo dal Watch o con un widget.</p>
+    </section>
+    <section class="card" aria-labelledby="how-h">
+      <h2 id="how-h">Come vengono usati i dati</h2>
+      <ul class="small">
+        <li><strong>Passi</strong> e <strong>peso</strong> sostituiscono quelli del giorno (importare due volte non raddoppia nulla).</li>
+        <li><strong>Calorie attive</strong>: il tuo livello di attività ne prevede già una parte. Al budget si aggiungono solo quelle <em>in più</em>,
+        e nei giorni con i dati del Watch le attività inserite a mano non vengono sommate di nuovo.</li>
+      </ul>
+    </section>`;
 }
 
 function viewProfilo() {
@@ -499,6 +598,7 @@ function viewProfilo() {
       <p class="muted xs">Stime con la formula di Mifflin-St Jeor. Non sono un parere medico: per esigenze di salute rivolgiti a un professionista.</p>
     </section>
     <section class="card"><h2>Dati personali</h2>${profileForm()}</section>
+    <a class="card row" href="#/salute" style="text-decoration:none;color:inherit">${icon('watch')}<span class="grow"><strong>Apple Watch e Salute</strong><br><span class="muted small">${state.lastHealthSync ? 'Collegato tramite Comandi Rapidi' : 'Importa passi, calorie attive e peso'}</span></span>${icon('right')}</a>
     <section class="card" aria-labelledby="set-h">
       <h2 id="set-h">Impostazioni</h2>
       <div class="row between wrap"><span>Tema</span><div class="seg" role="group" aria-label="Tema">${[['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(([v, l]) => `<button data-action="theme" data-v="${v}" aria-pressed="${state.settings.theme === v}">${l}</button>`).join('')}</div></div>
@@ -528,8 +628,16 @@ function openModal(title, body, { foot = '', form = '' } = {}) {
 }
 function closeModal() { if (dlg.open) dlg.close(); dlg.innerHTML = ''; }
 
+function openHealthManual(msg = '') {
+  openModal('Importa da Salute', `
+    ${msg ? `<p class="small">${esc(msg)}</p>` : ''}
+    <label class="field">Dati del Comando Rapido<textarea name="payload" rows="4" placeholder="passi=8500&amp;attive=520&amp;peso=80,4" autofocus></textarea>
+      <span class="hint">Incolla il testo o l'indirizzo copiato dal Comando Rapido.</span></label>`,
+  { form: 'health', foot: '<button class="btn primary">Importa</button>' });
+}
+
 function foodItem(f) {
-  return `<button class="pick" data-action="pick-food" data-id="${esc(f.id)}">
+  return `<button class="pick" data-action="pick-food" data-id="${esc(esc(f.id))}">
     <div class="main"><div class="ellipsis">${esc(f.name)}${f.id.startsWith('u-') ? ' <span class="badge">mio</span>' : ''}</div>
     <div class="muted xs num">${fmt(f.kcal)} kcal · P ${fmt(f.p, 1)} · C ${fmt(f.c, 1)} · G ${fmt(f.f, 1)} per 100 g</div></div>${icon('plus')}</button>`;
 }
@@ -635,9 +743,9 @@ function openWorkoutDetail(id) {
   const w = state.workouts.find((x) => x.id === id);
   if (!w) return;
   openModal(esc(w.name), `
-    <p class="muted small num">${C.parseKey(w.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} · ${duration(w.durationSec)} · ${C.doneSets(w)} serie · ${fmt(C.workoutVolume(w))} kg di volume · ~${fmt(C.workoutKcal(w, currentWeight()))} kcal</p>
+    <p class="muted small num">${C.parseKey(w.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} · ${duration(w.durationSec)} · ${C.doneSets(w)} serie · ${fmt(C.workoutVolume(w))} kg di volume · ~${fmt(workoutKcal(w))} kcal</p>
     ${w.exercises.map((ex) => `<div><h3>${esc(ex.name)}</h3><ol class="small num" style="margin:4px 0 0;padding-left:20px">${ex.sets.map((s) => `<li>${fmt(s.kg, 1)} kg × ${s.reps} <span class="muted xs">(1RM ~${fmt(C.oneRepMax(s.kg, s.reps), 1)})</span></li>`).join('')}</ol></div>`).join('')}`,
-  { foot: `<button class="btn danger" data-action="del-workout" data-id="${w.id}">${icon('trash')} Elimina</button><button class="btn" data-action="save-as-routine" data-id="${w.id}">Salva come scheda</button><button class="btn primary" data-action="close-modal">Chiudi</button>` });
+  { foot: `<button class="btn danger" data-action="del-workout" data-id="${esc(w.id)}">${icon('trash')} Elimina</button><button class="btn" data-action="save-as-routine" data-id="${esc(w.id)}">Salva come scheda</button><button class="btn primary" data-action="close-modal">Chiudi</button>` });
 }
 
 // ---------- timer di recupero ----------
@@ -653,8 +761,12 @@ function renderRest() {
     toast('Recupero finito: prossima serie!');
     return;
   }
-  restRoot.innerHTML = `<div class="rest" role="timer" aria-label="Recupero">${icon('timer')}<span class="num">Recupero ${duration(left)}</span>
-    <button data-action="rest-adj" data-s="-15" aria-label="Meno 15 secondi">−15</button><button data-action="rest-adj" data-s="15" aria-label="Più 15 secondi">+15</button><button data-action="rest-skip">Salta</button></div>`;
+  // i pulsanti non vengono ricreati ogni secondo: un tocco a cavallo dell'aggiornamento andrebbe perso
+  if (!restRoot.firstChild) {
+    restRoot.innerHTML = `<div class="rest" role="timer" aria-label="Recupero">${icon('timer')}<span class="num" id="rest-left"></span>
+      <button data-action="rest-adj" data-s="-15" aria-label="Meno 15 secondi">−15</button><button data-action="rest-adj" data-s="15" aria-label="Più 15 secondi">+15</button><button data-action="rest-skip">Salta</button></div>`;
+  }
+  restRoot.querySelector('#rest-left').textContent = `Recupero ${duration(left)}`;
 }
 function startRest() { ui.rest = { endsAt: Date.now() + state.settings.restSec * 1000 }; renderRest(); }
 
@@ -687,8 +799,10 @@ function finishWorkout() {
   const w = {
     id: a.id, name: a.name.trim() || 'Allenamento', date: a.date, startedAt: a.startedAt, routineId: a.routineId,
     durationSec: Math.round((Date.now() - a.startedAt) / 1000),
+    kcal: null,
     exercises: a.exercises.map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.done).map((s) => ({ kg: Number(s.kg) || 0, reps: Number(s.reps) || 0, done: true })) })).filter((ex) => ex.sets.length),
   };
+  w.kcal = C.workoutKcal(w, currentWeight()); // fissate ora: un peso futuro non cambia lo storico
   state.workouts.push(w);
   state.active = null;
   ui.rest = null; renderRest();
@@ -812,6 +926,19 @@ const actions = {
     state.routines.push({ id: 'r-' + S.uid(), name: w.name, exercises: w.exercises.map((e) => ({ name: e.name, sets: e.sets.length, reps: e.sets[0]?.reps || 10 })) });
     closeModal(); commit(); toast('Scheda creata');
   },
+  async 'health-paste'() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!/passi=|attive=|peso=|acqua=/.test(text)) throw new Error('vuoto');
+      if (importHealth(text)) render();
+    } catch {
+      openHealthManual('Non trovo i dati negli appunti. Esegui prima il Comando Rapido “HealthFit” oppure incollali qui.');
+    }
+  },
+  'health-manual'() { openHealthManual(); },
+  async 'copy-base'() {
+    try { await navigator.clipboard.writeText(`${healthBaseUrl()}passi=&attive=&peso=`); toast('Indirizzo copiato'); } catch { toast('Copia non riuscita: seleziona il testo a mano'); }
+  },
   'w-range'(el) { ui.weightRange = Number(el.dataset.v); render(); },
   'del-weight'(el) {
     const i = state.weights.findIndex((w) => w.date === el.dataset.date);
@@ -879,6 +1006,9 @@ const inputs = {
 };
 
 const forms = {
+  health(f, fd) {
+    if (importHealth(String(fd.get('payload') || ''))) { closeModal(); render(); }
+  },
   steps(f, fd) {
     const v = Math.round(num(fd.get('steps')));
     if (!(v >= 0 && v <= 200000)) { toast('Inserisci un numero di passi valido'); return; }
@@ -961,6 +1091,7 @@ const forms = {
       p.kcalOverride = ko >= 800 && ko <= 6000 ? Math.round(ko) : null;
       const pp = num(fd.get('pp')), pc = num(fd.get('pc')), pf = num(fd.get('pf'));
       if ([pp, pc, pf].every(Number.isFinite)) {
+        if ([pp, pc, pf].some((v) => v < 5 || v > 80)) { err.textContent = 'Ogni macro deve essere tra il 5% e l\'80%.'; return; }
         if (Math.round(pp + pc + pf) !== 100) { err.textContent = `Le percentuali dei macro devono fare 100 (ora: ${fmt(pp + pc + pf)}).`; return; }
         p.macroPct = { p: pp, c: pc, f: pf };
       } else if ([pp, pc, pf].some(Number.isFinite)) {
@@ -1019,10 +1150,19 @@ const ROUTES = {
   scheda: { view: viewScheda, title: 'Scheda', tab: 'allenamenti' },
   progressi: { view: viewProgressi, title: 'Progressi', tab: 'progressi' },
   profilo: { view: viewProfilo, title: 'Profilo', tab: 'profilo' },
+  salute: { view: viewSalute, title: 'Apple Watch e Salute', tab: 'profilo' },
 };
 
 function render() {
-  const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
+  // #/importa?passi=..: arriva dal Comando Rapido. Applica una volta, poi mostra Oggi
+  // (replaceState: tornando indietro non si reimporta).
+  if (location.hash.startsWith('#/importa')) {
+    importHealth(location.hash);
+    history.replaceState(null, '', '#/oggi');
+  }
+  const [path] = location.hash.replace(/^#\/?/, '').split('?');
+  const [name, rawArg] = path.split('/');
+  const arg = rawArg && decodeURIComponent(rawArg);
   const route = ROUTES[name] || ROUTES.oggi;
   const needsProfile = !state.profile;
   const scrollY = window.scrollY;
