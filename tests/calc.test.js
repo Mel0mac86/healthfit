@@ -60,3 +60,31 @@ test('BMI', () => {
   assert.equal(C.bmiLabel(24.7), 'Normopeso');
   assert.equal(C.bmi(80, 0), null);
 });
+
+test('numeri dai Comandi Rapidi (italiano e inglese)', () => {
+  const n = C.parseLocaleNumber;
+  assert.equal(n('8.500'), 8500);
+  assert.equal(n('8,500'), 8.5);
+  assert.equal(n('1.234,5'), 1234.5);
+  assert.equal(n('1,234.5'), 1234.5);
+  assert.equal(n('80,4 kg'), 80.4);
+  assert.equal(n('612.3'), 612.3);
+  assert.ok(Number.isNaN(n('abc')));
+  assert.ok(Number.isNaN(n('')));
+});
+
+test('payload di Salute', () => {
+  const p = C.parseHealthPayload('https://x.io/app/#/importa?passi=8.500&attive=612,3&peso=80,4', '2026-10-06');
+  assert.deepEqual(p, { date: '2026-10-06', values: { steps: 8500, activeKcal: 612, weightKg: 80.4 }, errors: [] });
+  // campi vuoti ignorati, valori fuori scala segnalati, data italiana accettata
+  const q = C.parseHealthPayload('passi=&attive=-4&peso=79&data=05/10/2026', '2026-10-06');
+  assert.deepEqual(q, { date: '2026-10-05', values: { weightKg: 79 }, errors: ['attive'] });
+  // data futura rifiutata
+  assert.deepEqual(C.parseHealthPayload('passi=10&data=2026-10-07', '2026-10-06').errors, ['data']);
+});
+
+test('bonus energia attiva: solo quella oltre il livello di attività', () => {
+  const p = { sex: 'M', age: 30, heightCm: 180, weightKg: 80, activity: 'sedentario' }; // BMR 1780, previste 356 attive
+  assert.equal(C.activeEnergyBonus(p, 300), 0);
+  assert.equal(C.activeEnergyBonus(p, 856), 500);
+});
