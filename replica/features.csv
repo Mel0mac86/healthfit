@@ -1,0 +1,36 @@
+feature,area,priority,original,clone,notes
+Profilo con calcolo BMR/TDEE e obiettivo calorie,onboarding,must,yes,yes,
+Obiettivi macro (proteine carboidrati grassi),onboarding,must,yes,yes,
+Diario alimentare per pasto (colazione pranzo cena spuntini),diario,must,yes,yes,
+Ricerca alimenti in un database,diario,must,yes,yes,
+Porzione in grammi con calcolo kcal e macro,diario,must,yes,yes,
+Crea alimento personalizzato,diario,must,yes,yes,
+Riepilogo giornaliero obiettivo - cibo + esercizio = rimanenti,oggi,must,yes,yes,
+Navigazione tra i giorni del diario,diario,must,yes,yes,
+Registra esercizio cardio con kcal stimate,diario,should,yes,yes,
+Copia pasto dal giorno precedente,diario,should,yes,yes,
+Alimenti recenti in cima alla ricerca,diario,should,yes,yes,
+Tracciamento acqua,oggi,should,yes,yes,
+Allenamento in palestra: esercizi serie kg ripetizioni,allenamenti,must,yes,yes,
+Libreria esercizi per gruppo muscolare,allenamenti,must,yes,yes,
+Schede (routine) riutilizzabili,allenamenti,must,yes,yes,
+Storico allenamenti con dettaglio,allenamenti,must,yes,yes,
+Valori della volta precedente accanto a ogni serie,allenamenti,should,yes,yes,
+Timer di recupero tra le serie,allenamenti,should,yes,yes,
+Record personali (1RM stimato peso massimo),allenamenti,should,yes,yes,
+Esercizio personalizzato,allenamenti,should,yes,yes,
+Registro peso con grafico,progressi,must,yes,yes,
+Passi giornalieri con obiettivo,progressi,should,yes,partial,inserimento manuale: una PWA non legge il contapassi del telefono
+BMI,progressi,could,yes,yes,
+Grafico calorie ultimi 7 giorni,progressi,should,yes,yes,
+Allenamenti per settimana,progressi,could,yes,yes,
+Serie di giorni consecutivi (streak),oggi,could,yes,yes,
+Funziona offline e installabile,piattaforma,should,yes,yes,service worker + manifest
+Esporta e importa i dati,piattaforma,should,yes,yes,
+Tema chiaro e scuro,piattaforma,could,yes,yes,
+Scansione codice a barre,diario,could,yes,no,richiede fotocamera + database prodotti; prossimo passo possibile
+Account e sincronizzazione cloud,piattaforma,could,yes,skip,scelta PWA locale senza server: i dati restano sul dispositivo
+Database alimenti crowdsourced con milioni di voci,diario,could,yes,skip,contenuto di proprieta dell'originale: usiamo un database proprio di base + alimenti personalizzati
+Sincronizzazione sensori e smartwatch (passi frequenza cardiaca sonno),progressi,could,yes,skip,richiede API native e hardware non disponibili in una PWA
+Community e feed social,social,could,yes,skip,la rete di utenti non si clona
+Piani alimentari premium a pagamento,premium,could,yes,skip,contenuto editoriale di proprieta
